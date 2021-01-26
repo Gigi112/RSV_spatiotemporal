@@ -1,0 +1,343 @@
+---
+title: "Second Stage--Community factors associated with local RSV epidemic timing: a spatiotemporal modeling study"
+author: "ZHE ZHENG"
+date: "6/8/2020"
+output: html_document
+---
+```{r}
+# INITIALISE TO LOCAL CONTEXT
+rm(list=ls())
+setwd("~/OneDrive - Yale University/RSV and Influenza/CAR/20000 iter/data")        # set work directory
+
+# READ DATA from the first stage
+#NJ data
+njtransmean<- readRDS("transnj.rds")               # phase estimates from the first stage 
+varnj<- readRDS("varnj.rds")                       # estimated variations from the first stage
+wj<- readRDS("wj.rds")                            # W matrix for spatial proximity model
+njcommutematrix <- readRDS("njcommutematrix .rds") # W matrix for commuting model
+NJcovariates <- readRDS("NJcovariates.rds")                      # demographic information, including normalized average family size, population density, population size, median income and school districts information
+
+#NY data
+nytransmean<- readRDS("transny.rds") 
+varny<- readRDS("varny.rds")         
+wy<- readRDS("wy.rds")
+nycommutematrix <- readRDS("nycommutematrix .rds")
+NYcovariates <- readRDS("NYcovariates.rds")        
+
+#CT data
+cttransmean<- readRDS("transct.rds") 
+varct<- readRDS("varct.rds")        
+wc<- readRDS("wc.rds")
+CTcovariates <- readRDS("CTcovariates.rds")  
+ctcommutematrix <- readRDS("ctcommutematrix .rds")
+```
+
+```{r}
+#################################################################
+#No Spatial Correlation Model
+#################################################################
+randomwhole <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,N.district){
+  
+  library(rjags) # LOAD LIBRARIES USED
+  library(coda)
+  
+  model_string<-"
+  model{
+  
+  for(i in 1:n.zip){
+  trans[i] ~ dnorm (tru[i], nu2[i])
+  tru[i] ~ dnorm(dmean[i], tau[i])
+  tau[i]~ dgamma(1.00, 0.01)
+  }
+  
+  
+  for(i in 1:n.zip){
+  dmean[i]<-beta0+beta1*housesize[i]+beta2*popden[i]+beta3*popsize[i]+beta4*income[i]+re[district[i]]}
+  
+  beta0 ~ dnorm (0, 0.0001)
+  beta1 ~ dnorm (0, 0.0001)
+  beta2 ~ dnorm (0, 0.0001)
+  beta3 ~ dnorm (0, 0.0001)
+  beta4 ~ dnorm (0, 0.0001)
+  
+  for(q in 1:N.district){
+  re[q] ~ dnorm (0, tau4)
+  }
+  tau4~ dgamma(0.01, 0.01)
+  
+  }"
+
+  dataset <- list('trans' = trans,"nu2"=nu2,'housesize'=housesize,"popden"=popden,"popsize"=popsize,"income"=income,'district'=district, 'N.district'=max(district),n.zip=n.zip)
+  
+  whole <- jags.model(textConnection(model_string),
+                   data=dataset,
+                   n.chains=2)
+  update(whole, 
+         n.iter=5000)
+  
+  wholeresult<-coda.samples(whole, variable.names=c("dmean","beta0","beta1","beta2","beta3","beta4","tru","re","tau4"),
+                     thin=10,
+                     n.iter=20000)
+  
+  random.dic  <- dic.samples(whole,n.iter=20000,thin=10,type="pD")
+ 
+  randomresult <- as.data.frame(as.matrix(wholeresult)) 
+  
+  return(list(random.dic,randomresult))
+  }
+
+randomwhole(trans=njtransmean,nu2=1/varnj,n.zip=length(njtransmean),housesize = NJcovariates$hs,popden = NJcovariates$den.log,popsize = NJcovariates$size.log,income=NJcovariates$income.log,district = NJcovariates$district) # New Jersey estimate
+
+randomwhole(trans=nytransmean,nu2=1/varny,n.zip=length(nytransmean),housesize = NYcovariates$hs,popden = NYcovariates$den.log,popsize = NYcovariates$size.log,income=NYcovariates$income.log,district = NYcovariates$district) # New York estimate
+
+randomwhole(trans=cttransmean,nu2=1/varct,n.zip=length(cttransmean),housesize = CTcovariates$hs,popden = CTcovariates$den.log,popsize = CTcovariates$size.log,income=CTcovariates$income.log,district = CTcovariates$district) # Connecticut estimate
+
+```
+
+
+```{r}
+#################################################################
+#Spatial Proximity Model
+#################################################################
+SP <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,w.mat,Id.mat){
+  
+  library(rjags)
+  library(coda)
+  
+  model_string<-"
+  model{
+  
+  for(i in 1:n.zip){
+  trans[i] ~ dnorm (tru[i], nu2[i])
+  
+  }
+  tru[1:n.zip] ~ dmnorm(dmean, Leroux)
+  
+  for(i in 1:n.zip){
+  dmean[i]<-beta0+beta1*housesize[i]+beta2*popden[i]+beta3*popsize[i]+beta4*income[i]+re[district[i]]
+
+  phi_leroux[i] <- tru[i]-dmean[i]
+  theta[i] <- trans[i]-beta0-re[district[i]]
+  }
+  
+  beta0 ~ dnorm (0, 0.0001)
+  beta1 ~ dnorm (0, 0.0001)
+  beta2 ~ dnorm (0, 0.0001)
+  beta3 ~ dnorm (0, 0.0001)
+  beta4 ~ dnorm (0, 0.0001)
+  
+  Leroux <- inv.tau*(rho*w.mat + (1 - rho)*Id.mat)
+  inv.tau ~ dgamma(0.01, 0.01)
+  rho~ dunif(0,1)
+  
+  for(q in 1:N.district){
+  re[q] ~ dnorm (0, tau4)
+  }
+  tau4~ dgamma(0.01, 0.01)
+
+#############################################
+#calculate variance
+#############################################
+  randomef <- 1/inv.tau+1/tau4
+  
+#############################################
+#Use to calculate percentage
+#############################################
+  sch.percent <- (1/tau4)/(1/inv.tau+1/tau4)
+  sp.percent <- (1/inv.tau)/(1/inv.tau+1/tau4)
+
+  }"
+
+  dataset <- list('trans' = trans,"nu2"=nu2,'housesize'=housesize,"popden"=popden,"popsize"=popsize,"income"=income,'district'=district, 'N.district'=max(district),n.zip=n.zip,w.mat=w.mat,Id.mat=Id.mat)
+  
+  whole <- jags.model(textConnection(model_string),
+                      data=dataset,
+                      n.chains=2)
+  
+  update(whole, 
+         n.iter=5000)
+  
+  wholeresult<-coda.samples(whole, variable.names=c("beta1","beta0","beta2","tru","rho","re","beta3","beta4","dmean","SSE.ref","theta","sch.percent","sp.percent","randomef"),
+                            thin=10,
+                            n.iter=20000)
+  
+  sp.dic  <- dic.samples(whole,n.iter=20000,thin=10,type="pD")
+  
+  spresult <- as.data.frame(as.matrix(wholeresult)) 
+  
+  return(list(sp.dic,spresult))
+}
+
+
+SP(trans=njtransmean,nu2=1/varnj,n.zip=length(njtransmean),housesize = NJcovariates$hs,popden = NJcovariates$den.log,popsize = NJcovariates$size.log,income=NJcovariates$income.log,district = NJcovariates$district,w.mat=wj,Id.mat=diag(ncol(wj))) # New Jersey estimate
+
+SP(trans=cttransmean,nu2=1/varct,n.zip=length(cttransmean),housesize = CTcovariates$hs,popden = CTcovariates$den.log,popsize = CTcovariates$size.log,income=CTcovariates$income.log,district = CTcovariates$district,w.mat=wc,Id.mat=diag(nrow(wc))) # Connecticut estimate
+
+SP(trans=nytransmean,nu2=1/varny,n.zip=length(nytransmean),housesize = NYcovariates$hs,popden = NYcovariates$den.log,popsize = NYcovariates$size.log,income=NYcovariates$income.log,district = NYcovariates$district,w.mat=wy,Id.mat=diag(ncol(wy))) # New York estimate
+```
+
+```{r}
+#################################################################
+#Commuting Flows Model
+#################################################################
+com <- function(trans,nu2,n.zip,housesize,population,district,w.mat,Id.mat,N.district){
+  
+  library(rjags)
+  library(coda)
+  
+  model_string<-"
+  model{
+  
+  for(i in 1:n.zip){
+  trans[i] ~ dnorm (tru[i], nu2[i])
+  
+  }
+  tru[1:n.zip] ~ dmnorm(dmean, Leroux[1:n.zip,1:n.zip])
+  
+  for(i in 1:n.zip){
+  dmean[i]<-beta0+beta1*housesize[i]+beta2*popden[i]+beta3*popsize[i]+beta4*income[i]+re[district[i]]}
+  
+  beta0 ~ dnorm (0, 0.0001)
+  beta1 ~ dnorm (0, 0.0001)
+  beta2 ~ dnorm (0, 0.0001)
+  beta3 ~ dnorm (0, 0.0001)
+  beta4 ~ dnorm (0, 0.0001)
+  
+  Leroux <- inv.tau*(rho*w.mat + (1 - rho)*Id.mat)
+  inv.tau ~ dgamma(1.00, 0.01)
+  rho~ dunif(0,1)
+
+  for(q in 1:N.district){
+  re[q] ~ dnorm (0, tau4)
+  }
+  tau4~ dgamma(0.01, 0.01)
+  }"
+
+  dataset <- list('trans' = trans,"nu2"=nu2,'housesize'=housesize,"popden"=popden,"popsize"=popsize,"income"=income,'district'=district, 'N.district'=max(district),n.zip=n.zip,w.mat=w.mat,Id.mat=Id.mat)
+  
+  whole <- jags.model(textConnection(model_string),
+                   data=dataset,
+                   n.chains=2)
+  update(whole, 
+         n.iter=5000)
+  
+  wholeresult<-coda.samples(whole, variable.names=c("beta1","beta0","beta2","tru","rho","re","beta3","beta4","dmean","SSE.ref","theta","sch.percent","sp.percent","randomef"),
+                     thin=10,
+                     n.iter=20000)
+  
+  com.dic  <- dic.samples(whole,n.iter=20000,thin=10,type="pD")
+  
+  comresult <- as.data.frame(as.matrix(wholeresult)) 
+  
+  return(list(com.dic,comresult))
+}
+
+com(trans=njtransmean,nu2=1/varnj,n.zip=length(njtransmean),housesize = NJcovariates$hs,popden = NJcovariates$den.log,popsize = NJcovariates$size.log,income=NJcovariates$income.log,district = NJcovariates$district,w.mat=njcommutematrix,Id.mat=diag(ncol(njcommutematrix)))
+
+com(trans=nytransmean,nu2=1/varny,n.zip=length(nytransmean),housesize = NYcovariates$hs,popden = NYcovariates$den.log,popsize = NYcovariates$size.log,income=NYcovariates$income.log,district = NYcovariates$district,w.mat=nycommutematrix,Id.mat=diag(ncol(nycommutematrix)))
+
+com(trans=cttransmean,nu2=1/varct,n.zip=length(cttransmean),housesize = CTcovariates$hs,popden = CTcovariates$den.log,popsize = CTcovariates$size.log,income=CTcovariates$income.log,district = CTcovariates$district,w.mat=ctcommutematrix,Id.mat=diag(ncol(ctcommutematrix)))
+```
+
+```{r}
+#############################################
+#calculate relative importance
+#############################################
+  
+dmean.nj <- spresult[,grep("dmean[",colnames(spresult),fixed = T)]
+beta0 <- spresult[,grep("beta0[",colnames(spresult),fixed = T)]
+beta1 <- spresult[,grep("beta1[",colnames(spresult),fixed = T)]
+beta2 <- spresult[,grep("beta2[",colnames(spresult),fixed = T)]
+beta3 <- spresult[,grep("beta3[",colnames(spresult),fixed = T)]
+beta4 <- spresult[,grep("beta4[",colnames(spresult),fixed = T)]
+
+betasq.hz <- c() #relative importance of family size
+betasq.popden <- c()#relative importance of population density
+betasq.popsize <- c()#relative importance of population size
+betasq.income <- c()#relative importance of median income
+
+for (i in 1:4000) {
+  betasq.hz[i] <- (beta1[i]*sd(NJcovariates$hs)/sd(dmean.nj[i,]))^2 #relative importance of family size
+  betasq.popden[i] <- (beta2[i]*sd(NJcovariates$den.log)/sd(dmean.nj[i,]))^2 #relative importance of population density
+  betasq.popsize[i] <- (beta3[i]*sd(NJcovariates$size.log)/sd(dmean.nj[i,]))^2 #relative importance of population size
+  betasq.income[i] <- (beta4[i]*sd(NJcovariates$income.log)/sd(dmean.nj[i,]))^2 #relative importance of median income
+}
+
+```
+
+```{r}
+#############################################
+#calculate variance without fixed effects
+#############################################
+rv <- function(trans,nu2,n.zip,district,w.mat,Id.mat){
+  
+  library(rjags)
+  library(coda)
+  
+  model_string<-"
+  model{
+  
+  for(i in 1:n.zip){
+  trans[i] ~ dnorm (tru[i], nu2[i])
+  
+  }
+  tru[1:n.zip] ~ dmnorm(dmean, Leroux)
+  
+  for(i in 1:n.zip){
+  dmean[i]<-beta0+re[district[i]]
+
+  phi_leroux[i] <- tru[i]-dmean[i]
+  theta[i] <- trans[i]-beta0-re[district[i]]
+  }
+  
+  Leroux <- inv.tau*(rho*w.mat + (1 - rho)*Id.mat)
+  inv.tau ~ dgamma(0.01, 0.01)
+  rho~ dunif(0,1)
+  
+  for(q in 1:N.district){
+  re[q] ~ dnorm (0, tau4)
+  }
+  tau4~ dgamma(0.01, 0.01)
+
+#############################################
+#calculate variance
+#############################################
+  randomef <- 1/inv.tau+1/tau4
+  
+#############################################
+#Use to calculate percentage
+#############################################
+  sch.percent <- (1/tau4)/(1/inv.tau+1/tau4)
+  sp.percent <- (1/inv.tau)/(1/inv.tau+1/tau4)
+
+  }"
+
+  dataset <- list('trans' = trans,"nu2"=nu2,'district'=district, 'N.district'=max(district),n.zip=n.zip,w.mat=w.mat,Id.mat=Id.mat)
+  
+  whole <- jags.model(textConnection(model_string),
+                      data=dataset,
+                      n.chains=2)
+  
+  update(whole, 
+         n.iter=5000)
+  
+  wholeresult<-coda.samples(whole, variable.names=c("tru","rho","re","dmean","SSE.ref","theta","sch.percent","sp.percent","randomef"),
+                            thin=10,
+                            n.iter=20000)
+  
+  rvresult <- as.data.frame(as.matrix(wholeresult)) 
+  
+  return(rvresult)
+}
+
+
+rv(trans=njtransmean,nu2=1/varnj,n.zip=length(njtransmean),district = NJcovariates$district,w.mat=wj,Id.mat=diag(ncol(wj))) # New Jersey estimate
+
+ranef.nj <- rvresult[,grep("randomef",colnames(rvresult),fixed = T)]
+fixef.nj <- spresult[,grep("randomef",colnames(spresult),fixed = T)]
+
+#calculate variance reduction
+(mean(fixef.nj)-mean(ranef.nj))/mean(ranef.nj) # because it's reduction, this value is negative
+
+```
+
