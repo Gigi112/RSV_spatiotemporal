@@ -11,22 +11,35 @@ setwd("~/OneDrive - Yale University/RSV and Influenza/CAR/20000 iter/data")     
 
 # READ DATA from the first stage
 #NJ data
-njtransmean<- readRDS("transnj.rds")               # phase estimates from the first stage 
-varnj<- readRDS("varnj.rds")                       # estimated variations from the first stage
+firstnj <- readRDS("firstnj.rds")
+njtransmean<- colMeans(firstnj)              # phase estimates from the first stage 
+varnj<- c()                       # estimated variations from the first stage
+for (i in 1:length(njtransmean)) {
+  varnj[i] <- var(firstnj[,i])
+}
 wj<- readRDS("wj.rds")                            # W matrix for spatial proximity model
 njcommutematrix <- readRDS("njcommutematrix .rds") # W matrix for commuting model
 NJcovariates <- readRDS("NJcovariates.rds")                      # demographic information, including normalized average family size, population density, population size, median income and school districts information
 
 #NY data
-nytransmean<- readRDS("transny.rds") 
-varny<- readRDS("varny.rds")         
+firstny <- readRDS("firstny.rds") 
+nytransmean<- colMeans(firstny)
+varny<- c()
+for (i in 1:length(nytransmean)) {
+  varny[i] <- var(firstny[,i])
+}
+
 wy<- readRDS("wy.rds")
 nycommutematrix <- readRDS("nycommutematrix .rds")
 NYcovariates <- readRDS("NYcovariates.rds")        
 
 #CT data
-cttransmean<- readRDS("transct.rds") 
-varct<- readRDS("varct.rds")        
+firstct <- readRDS("firstct.rds") 
+cttransmean<- colMeans(firstct)
+varct<- c()
+for (i in 1:length(nytransmean)) {
+  varny[i] <- var(firstny[,i])
+}      
 wc<- readRDS("wc.rds")
 CTcovariates <- readRDS("CTcovariates.rds")  
 ctcommutematrix <- readRDS("ctcommutematrix .rds")
@@ -264,6 +277,25 @@ for (i in 1:4000) {
 }
 
 ```
+
+```{r}
+##########################################################################################
+#calculate difference in epidemic timing between the top and bottom decile for variables
+##########################################################################################
+
+beta1.nj <- beta1/sd.nj.hs
+hs.nj.90th <- quantile(NJcovariates$hs,0.9)-mean.nj.hs
+hs.nj.10th <- quantile(NJcovariates$hs,0.1)-mean.nj.hs
+beta0.nj <- beta0
+  
+monthnj90th.hs <- 12*exp(beta0.nj+beta1.nj*hs.nj.90th)/(1+exp(beta0.nj+beta1.nj*hs.nj.90th))
+monthnj10th.hs <- 12*exp(beta0.nj+beta1.nj*hs.nj.10th)/(1+exp(beta0.nj+beta1.nj*hs.nj.10th))
+
+mean(monthnj90th.hs-monthnj10th.hs)
+quantile(monthnj90th.hs-monthnj10th.hs,c(0.025,0.975))
+
+```
+
 
 ```{r}
 #############################################
