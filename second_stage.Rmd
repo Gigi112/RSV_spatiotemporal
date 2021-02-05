@@ -58,14 +58,20 @@ randomwhole <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district
   model{
   
   for(i in 1:n.zip){
-  trans[i] ~ dnorm (tru[i], nu2[i])
+  trans[i] ~ dnorm (tru[i], nu2[i]) 
+  # The first stage estimates reflect a true mean and observational errors
+
   tru[i] ~ dnorm(dmean[i], tau[i])
-  tau[i]~ dgamma(1.00, 0.01)
+  # The true mean depends on fixed effects (socio-demographic factors) and spatial random effects
+
+  tau[i]~ dgamma(0.01, 0.01)
+  # This model assumes no spatial correlation
   }
   
   
   for(i in 1:n.zip){
   dmean[i]<-beta0+beta1*housesize[i]+beta2*popden[i]+beta3*popsize[i]+beta4*income[i]+re[district[i]]}
+  # this equation accounts for household size, population density, population size, SES and school districts
   
   beta0 ~ dnorm (0, 0.0001)
   beta1 ~ dnorm (0, 0.0001)
@@ -80,19 +86,19 @@ randomwhole <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district
   
   }"
 
-  dataset <- list('trans' = trans,"nu2"=nu2,'housesize'=housesize,"popden"=popden,"popsize"=popsize,"income"=income,'district'=district, 'N.district'=max(district),n.zip=n.zip)
+  dataset <- list('trans' = trans,"nu2"=nu2,'housesize'=housesize,"popden"=popden,"popsize"=popsize,"income"=income,'district'=district, 'N.district'=max(district),n.zip=n.zip) # read in corresponding dataset
   
   whole <- jags.model(textConnection(model_string),
                    data=dataset,
-                   n.chains=2)
+                   n.chains=2) # set two chains for convergence diagnostic and dic calculation
   update(whole, 
-         n.iter=5000)
+         n.iter=5000) # burn-in iterations
   
   wholeresult<-coda.samples(whole, variable.names=c("dmean","beta0","beta1","beta2","beta3","beta4","tru","re","tau4"),
                      thin=10,
-                     n.iter=20000)
+                     n.iter=20000) # acquire posterior samples
   
-  random.dic  <- dic.samples(whole,n.iter=20000,thin=10,type="pD")
+  random.dic  <- dic.samples(whole,n.iter=20000,thin=10,type="pD") # calculate dic
  
   randomresult <- as.data.frame(as.matrix(wholeresult)) 
   
@@ -125,12 +131,10 @@ SP <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,w.mat,Id
   
   }
   tru[1:n.zip] ~ dmnorm(dmean, Leroux)
+  # this model assumes nearby locations have similar epidemic timing
   
   for(i in 1:n.zip){
   dmean[i]<-beta0+beta1*housesize[i]+beta2*popden[i]+beta3*popsize[i]+beta4*income[i]+re[district[i]]
-
-  phi_leroux[i] <- tru[i]-dmean[i]
-  theta[i] <- trans[i]-beta0-re[district[i]]
   }
   
   beta0 ~ dnorm (0, 0.0001)
@@ -139,7 +143,7 @@ SP <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,w.mat,Id
   beta3 ~ dnorm (0, 0.0001)
   beta4 ~ dnorm (0, 0.0001)
   
-  Leroux <- inv.tau*(rho*w.mat + (1 - rho)*Id.mat)
+  Leroux <- inv.tau*(rho*w.mat + (1 - rho)*Id.mat) # calculate spatial correlated random effects
   inv.tau ~ dgamma(0.01, 0.01)
   rho~ dunif(0,1)
   
@@ -170,7 +174,7 @@ SP <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,w.mat,Id
   update(whole, 
          n.iter=5000)
   
-  wholeresult<-coda.samples(whole, variable.names=c("beta1","beta0","beta2","tru","rho","re","beta3","beta4","dmean","SSE.ref","theta","sch.percent","sp.percent","randomef"),
+  wholeresult<-coda.samples(whole, variable.names=c("beta1","beta0","beta2","tru","rho","beta3","beta4","dmean","sch.percent","sp.percent","randomef"),
                             thin=10,
                             n.iter=20000)
   
@@ -206,7 +210,8 @@ com <- function(trans,nu2,n.zip,housesize,population,district,w.mat,Id.mat,N.dis
   
   }
   tru[1:n.zip] ~ dmnorm(dmean, Leroux[1:n.zip,1:n.zip])
-  
+  # this model assumes commuting networks help to seed RSV epidemics   
+
   for(i in 1:n.zip){
   dmean[i]<-beta0+beta1*housesize[i]+beta2*popden[i]+beta3*popsize[i]+beta4*income[i]+re[district[i]]}
   
@@ -253,11 +258,11 @@ com(trans=cttransmean,nu2=1/varct,n.zip=length(cttransmean),housesize = CTcovari
 ```
 
 ```{r}
-#############################################
-#calculate relative importance
-#############################################
+#######################################################
+#calculate the relative importance of covariates
+#######################################################
   
-dmean.nj <- spresult[,grep("dmean[",colnames(spresult),fixed = T)]
+dmean.nj <- spresult[,grep("dmean[",colnames(spresult),fixed = T)] # get posterior estimates
 beta0 <- spresult[,grep("beta0[",colnames(spresult),fixed = T)]
 beta1 <- spresult[,grep("beta1[",colnames(spresult),fixed = T)]
 beta2 <- spresult[,grep("beta2[",colnames(spresult),fixed = T)]
@@ -283,16 +288,19 @@ for (i in 1:4000) {
 #calculate difference in epidemic timing between the top and bottom decile for variables
 ##########################################################################################
 
-beta1.nj <- beta1/sd.nj.hs
-hs.nj.90th <- quantile(NJcovariates$hs,0.9)-mean.nj.hs
-hs.nj.10th <- quantile(NJcovariates$hs,0.1)-mean.nj.hs
+beta1.nj <- beta1/sd.nj.hs # convert back to unstandardized coefficients
+hs.nj.90th <- quantile(NJcovariates$hs,0.9)-mean.nj.hs # get the top dencile of household size
+hs.nj.10th <- quantile(NJcovariates$hs,0.1)-mean.nj.hs # get the bottom dencile of household size
 beta0.nj <- beta0
   
 monthnj90th.hs <- 12*exp(beta0.nj+beta1.nj*hs.nj.90th)/(1+exp(beta0.nj+beta1.nj*hs.nj.90th))
-monthnj10th.hs <- 12*exp(beta0.nj+beta1.nj*hs.nj.10th)/(1+exp(beta0.nj+beta1.nj*hs.nj.10th))
+# epidemic timing estimates for the top dencile of household size
 
-mean(monthnj90th.hs-monthnj10th.hs)
-quantile(monthnj90th.hs-monthnj10th.hs,c(0.025,0.975))
+monthnj10th.hs <- 12*exp(beta0.nj+beta1.nj*hs.nj.10th)/(1+exp(beta0.nj+beta1.nj*hs.nj.10th))
+# epidemic timing estimates for the bottom dencile of household size
+
+mean(monthnj90th.hs-monthnj10th.hs) # the mean difference in epidemic timing
+quantile(monthnj90th.hs-monthnj10th.hs,c(0.025,0.975)) # the 95% CrI of difference in epidemic timing
 
 ```
 
