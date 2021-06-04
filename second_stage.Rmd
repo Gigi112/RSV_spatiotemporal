@@ -15,20 +15,20 @@ njtransmean<- readRDS("transnj.rds")               # phase estimates from the fi
 varnj<- readRDS("varnj.rds")                       # estimated variations from the first stage
 wj<- readRDS("wj.rds")                            # W matrix for spatial proximity model
 njcommutematrix <- readRDS("njcommutematrix .rds") # W matrix for commuting model
-NJcovariates <- readRDS("NJcovariates.rds")                      # demographic information, including normalized average family size, population density, population size, median income and school districts information
+NJcovariate <- readRDS("NJcovariate.rds")                      # demographic information, including normalized average family size, population density, population size, median income and school districts information
 
 #NY data
 nytransmean<- readRDS("transny.rds") 
 varny<- readRDS("varny.rds")         
 wy<- readRDS("wy.rds")
 nycommutematrix <- readRDS("nycommutematrix .rds")
-NYcovariates <- readRDS("NYcovariates.rds")      
+NYcovariate <- readRDS("NYcovariate.rds")      
 
 #CT data
 cttransmean<- readRDS("transct.rds") 
 varct<- readRDS("varct.rds")        
 wc<- readRDS("wc.rds")
-CTcovariates <- readRDS("CTcovariates.rds")  
+CTcovariate <- readRDS("CTcovariate.rds")  
 ctcommutematrix <- readRDS("ctcommutematrix .rds")
 ```
 
@@ -92,11 +92,11 @@ randomwhole <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district
   return(list(random.dic,randomresult))
   }
 
-randomwhole(trans=njtransmean,nu2=1/varnj,n.zip=length(njtransmean),housesize = NJcovariates$hs,popden = NJcovariates$den.log,popsize = NJcovariates$size.log,income=NJcovariates$income.log,district = NJcovariates$district) # New Jersey estimate
+randomwhole(trans=njtransmean$trans.nj,nu2=1/varnj$var.nj,n.zip=length(njtransmean$var.nj),housesize = NJcovariate$scalehs,popden = NJcovariate$scalepopden,popsize = NJcovariate$scalepopsize,income=NJcovariate$scaleincome,district = NJcovariate$district) # New Jersey estimate
 
-randomwhole(trans=nytransmean,nu2=1/varny,n.zip=length(nytransmean),housesize = NYcovariates$hs,popden = NYcovariates$den.log,popsize = NYcovariates$size.log,income=NYcovariates$income.log,district = NYcovariates$district) # New York estimate
+randomwhole(trans=nytransmean$trans.ny,nu2=1/varny$var.ny,n.zip=length(nytransmean$var.ny),housesize = NYcovariate$scalehs,popden = NYcovariate$scalepopden,popsize = NYcovariate$scalepopsize,income=NYcovariate$scaleincome,district = NYcovariate$district) # New York estimate
 
-randomwhole(trans=cttransmean,nu2=1/varct,n.zip=length(cttransmean),housesize = CTcovariates$hs,popden = CTcovariates$den.log,popsize = CTcovariates$size.log,income=CTcovariates$income.log,district = CTcovariates$district) # Connecticut estimate
+randomwhole(trans=cttransmean$trans.ct,nu2=1/varct$var.ct,n.zip=length(cttransmean$trans.ct),housesize = CTcovariate$scalehs,popden = CTcovariate$scalepopden,popsize = CTcovariate$scalepopsize,income=CTcovariate$scaleincome,district = CTcovariate$district) # Connecticut estimate
 
 ```
 
@@ -173,11 +173,11 @@ SP <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,w.mat,Id
 }
 
 
-SP(trans=njtransmean,nu2=1/varnj,n.zip=length(njtransmean),housesize = NJcovariates$hs,popden = NJcovariates$den.log,popsize = NJcovariates$size.log,income=NJcovariates$income.log,district = NJcovariates$district,w.mat=wj,Id.mat=diag(ncol(wj))) # New Jersey estimate
+SP(trans=njtransmean$trans.nj,nu2=1/varnj$var.nj,n.zip=length(njtransmean$var.nj),housesize = NJcovariate$scalehs,popden = NJcovariate$scalepopden,popsize = NJcovariate$scalepopsize,income=NJcovariate$scaleincome,district = NJcovariate$district,w.mat=wj,Id.mat=diag(ncol(wj))) # New Jersey estimate
 
-SP(trans=cttransmean,nu2=1/varct,n.zip=length(cttransmean),housesize = CTcovariates$hs,popden = CTcovariates$den.log,popsize = CTcovariates$size.log,income=CTcovariates$income.log,district = CTcovariates$district,w.mat=wc,Id.mat=diag(nrow(wc))) # Connecticut estimate
+SP(trans=cttransmean$trans.ct,nu2=1/varct$var.ct,n.zip=length(cttransmean$trans.ct),housesize = CTcovariate$scalehs,popden = CTcovariate$scalepopden,popsize = CTcovariate$scalepopsize,income=CTcovariate$scaleincome,district = CTcovariate$district,w.mat=wc,Id.mat=diag(nrow(wc))) # Connecticut estimate
 
-SP(trans=nytransmean,nu2=1/varny,n.zip=length(nytransmean),housesize = NYcovariates$hs,popden = NYcovariates$den.log,popsize = NYcovariates$size.log,income=NYcovariates$income.log,district = NYcovariates$district,w.mat=wy,Id.mat=diag(ncol(wy))) # New York estimate
+SP(trans=nytransmean$trans.ny,nu2=1/varny$var.ny,n.zip=length(nytransmean$var.ny),housesize = NYcovariate$scalehs,popden = NYcovariate$scalepopden,popsize = NYcovariate$scalepopsize,income=NYcovariate$scaleincome,district = NYcovariate$district,w.mat=wy,Id.mat=diag(ncol(wy))) # New York estimate
 ```
 
 ```{r}
@@ -237,11 +237,11 @@ com <- function(trans,nu2,n.zip,housesize,population,district,w.mat,Id.mat,N.dis
   return(list(com.dic,comresult))
 }
 
-com(trans=njtransmean,nu2=1/varnj,n.zip=length(njtransmean),housesize = NJcovariates$hs,popden = NJcovariates$den.log,popsize = NJcovariates$size.log,income=NJcovariates$income.log,district = NJcovariates$district,w.mat=njcommutematrix,Id.mat=diag(ncol(njcommutematrix)))
+com(trans=njtransmean$trans.nj,nu2=1/varnj$var.nj,n.zip=length(njtransmean$var.nj),housesize = NJcovariate$scalehs,popden = NJcovariate$scalepopden,popsize = NJcovariate$scalepopsize,income=NJcovariate$scaleincome,district = NJcovariate$district,w.mat=njcommutematrix,Id.mat=diag(ncol(njcommutematrix)))
 
-com(trans=nytransmean,nu2=1/varny,n.zip=length(nytransmean),housesize = NYcovariates$hs,popden = NYcovariates$den.log,popsize = NYcovariates$size.log,income=NYcovariates$income.log,district = NYcovariates$district,w.mat=nycommutematrix,Id.mat=diag(ncol(nycommutematrix)))
+com(trans=nytransmean$trans.ny,nu2=1/varny$var.ny,n.zip=length(nytransmean$var.ny),housesize = NYcovariate$scalehs,popden = NYcovariate$scalepopden,popsize = NYcovariate$scalepopsize,income=NYcovariate$scaleincome,district = NYcovariate$district,w.mat=nycommutematrix,Id.mat=diag(ncol(nycommutematrix)))
 
-com(trans=cttransmean,nu2=1/varct,n.zip=length(cttransmean),housesize = CTcovariates$hs,popden = CTcovariates$den.log,popsize = CTcovariates$size.log,income=CTcovariates$income.log,district = CTcovariates$district,w.mat=ctcommutematrix,Id.mat=diag(ncol(ctcommutematrix)))
+com(trans=cttransmean$trans.ct,nu2=1/varct$var.ct,n.zip=length(cttransmean$trans.ct),housesize = CTcovariate$scalehs,popden = CTcovariate$scalepopden,popsize = CTcovariate$scalepopsize,income=CTcovariate$scaleincome,district = CTcovariate$district,w.mat=ctcommutematrix,Id.mat=diag(ncol(ctcommutematrix)))
 ```
 
 ```{r}
