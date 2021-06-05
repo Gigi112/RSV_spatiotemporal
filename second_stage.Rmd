@@ -231,7 +231,7 @@ SP.dic(trans=cttransmean$trans.ct,nu2=1/varct$var.ct,n.zip=length(cttransmean$tr
 
 SP.dic(trans=nytransmean$trans.ny,nu2=1/varny$var.ny,n.zip=length(nytransmean$var.ny),housesize = NYcovariate$scalehs,popden = NYcovariate$scalepopden,popsize = NYcovariate$scalepopsize,income=NYcovariate$scaleincome,district = NYcovariate$district,w.mat=wy,Id.mat=diag(ncol(wy))) # New York estimate
 
-SP.dic <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,w.mat,Id.mat){
+SP <- function(trans,nu2,n.zip,housesize,popden,popsize,income,district,w.mat,Id.mat){
   
   library(rjags)
   library(coda)
